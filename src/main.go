@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/joho/godotenv"
 	uuid "github.com/nu7hatch/gouuid"
 )
@@ -52,8 +53,7 @@ type TodoistResponse struct {
 type response map[string]string
 
 func main() {
-	// lambda.Start(handleRequest)
-	handleRequest()
+	lambda.Start(handleRequest)
 }
 
 func handleRequest() {
