@@ -66,7 +66,8 @@ func handleRequest() {
 	k := os.Getenv("TODOIST_KEY")
 	b := "Bearer " + k
 
-	t := time.Now()
+	location, _ := time.LoadLocation("Asia/Singapore")
+	t := time.Now().In(location)
 
 	var uuid1 *uuid.UUID
 	var uuid2 *uuid.UUID
