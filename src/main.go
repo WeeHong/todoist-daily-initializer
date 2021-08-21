@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/joho/godotenv"
 	uuid "github.com/nu7hatch/gouuid"
 )
@@ -53,7 +52,8 @@ type TodoistResponse struct {
 type response map[string]string
 
 func main() {
-	lambda.Start(handleRequest)
+	// lambda.Start(handleRequest)
+	handleRequest()
 }
 
 func handleRequest() {
@@ -91,8 +91,8 @@ func handleRequest() {
 	dd2 = DueDate{
 		Lang:        "en",
 		IsRecurring: false,
-		String:      t.Format("02 Jan") + " 20:00",
-		Date:        t.Format("2006-01-02") + "T20:00:00",
+		String:      t.Format("02 Jan") + " 21:00",
+		Date:        t.Format("2006-01-02") + "T21:00:00",
 		Timezone:    "Asia/Singapore",
 	}
 
@@ -146,10 +146,75 @@ func handleRequest() {
 	}
 	defer resp.Body.Close()
 
-	err = json.NewDecoder(resp.Body).Decode(&TodoistResponse{})
-	if err != nil {
-		log.Fatalf("Error on decoding the response body: %v", err)
+	// ===========================================================================
+	uuid1, _ = uuid.NewV4()
+	uuid2, _ = uuid.NewV4()
+
+	dd1 = DueDate{
+		Lang:        "en",
+		IsRecurring: false,
+		String:      "every day",
+		Date:        t.Format("2006-01-02"),
+		Timezone:    "Asia/Singapore",
 	}
+
+	dd2 = DueDate{
+		Lang:        "en",
+		IsRecurring: false,
+		String:      t.Format("02 Jan") + " 20:30",
+		Date:        t.Format("2006-01-02") + "T20:30:00",
+		Timezone:    "Asia/Singapore",
+	}
+
+	ap1 = ArgumentProperty{
+		ID:        "practice-leetcode",
+		Content:   "Practice LeetCode",
+		Due:       dd1,
+		DateAdded: t.Format((time.RFC3339)),
+		Priority:  1,
+	}
+
+	ap2 = ArgumentProperty{
+		ID:     "practice-leetcode-reminder",
+		ItemID: "practice-leetcode",
+		Type:   "absolute",
+		Due:    dd2,
+	}
+
+	c = []Commands{
+		{
+			Type:   "item_add",
+			UUID:   uuid1.String(),
+			TempID: "practice-leetcode",
+			Args:   ap1,
+		},
+		{
+			Type:   "reminder_add",
+			UUID:   uuid2.String(),
+			TempID: "practice-leetcode-reminder-temp-id",
+			Args:   ap2,
+		},
+	}
+
+	args = TodoistRequest{
+		SyncToken: "*",
+		Commands:  c,
+	}
+
+	reqBody, err = json.Marshal(args)
+	if err != nil {
+		log.Fatalf("Failed to parse struct into JSON: %v", err)
+	}
+	req, err = http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Authorization", b)
+
+	client = &http.Client{}
+	resp, err = client.Do(req)
+	if err != nil {
+		log.Fatalf("Error on response: %v", err)
+	}
+	defer resp.Body.Close()
 
 	// ===========================================================================
 	uuid1, _ = uuid.NewV4()
