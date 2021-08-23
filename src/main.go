@@ -10,7 +10,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/joho/godotenv"
 	uuid "github.com/nu7hatch/gouuid"
 )
@@ -176,8 +175,10 @@ func handleRequest() {
 		i.TaskDueDate = i.generateDueDate("task")
 		i.TaskArgument = i.generateArgument("task")
 
-		i.ReminderDueDate = i.generateDueDate("reminder")
-		i.ReminderArgument = i.generateArgument("reminder")
+		if i.DueTime != "" {
+			i.ReminderDueDate = i.generateDueDate("reminder")
+			i.ReminderArgument = i.generateArgument("reminder")
+		}
 
 		c = []Commands{
 			i.generateCommand("task"),
@@ -202,5 +203,6 @@ func readJson() []byte {
 }
 
 func main() {
-	lambda.Start(handleRequest)
+	// lambda.Start(handleRequest)
+	handleRequest()
 }
