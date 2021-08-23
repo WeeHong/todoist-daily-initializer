@@ -1,5 +1,5 @@
 [
-  { "name": "Practice LeetCode", "due_time": "20:30" },
-  { "name": "Study C# Course", "due_time": "21:00" },
-  { "name": "Write Journal", "due_time": "22:00" }
+  { "name": "Practice LeetCode - 1", "due_time": "20:30" },
+  { "name": "Study C# Course - 1", "due_time": "21:00" },
+  { "name": "Write Journal - 1", "due_time": "22:00" }
 ]

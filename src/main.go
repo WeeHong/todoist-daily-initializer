@@ -16,8 +16,14 @@ import (
 )
 
 type TaskList struct {
-	Name    string `json:"name"`
-	DueTime string `json:"due_time"`
+	Name             string `json:"name"`
+	DueTime          string `json:"due_time"`
+	CurrentDate      time.Time
+	TaskID           string
+	TaskDueDate      DueDate
+	ReminderDueDate  DueDate
+	TaskArgument     ArgumentProperty
+	ReminderArgument ArgumentProperty
 }
 
 type TodoistRequest struct {
@@ -57,8 +63,93 @@ type TodoistResponse struct {
 	TempIDMapping map[string]uint64 `json:"temp_id_mapping"`
 }
 
-func main() {
-	lambda.Start(handleRequest)
+func (i *TaskList) generateDueDate(t string) DueDate {
+	var dd DueDate
+	dd.Lang = "en"
+	dd.IsRecurring = false
+	dd.Timezone = "Asia/Singapore"
+	dd.String = "every day"
+	dd.Date = i.CurrentDate.Format("2006-01-02")
+
+	if t == "reminder" {
+		dd.String = fmt.Sprintf("%s %s", i.CurrentDate.Format("02 Jan"), i.DueTime)
+		dd.Date = fmt.Sprintf("%sT%s:00", i.CurrentDate.Format("2006-01-02"), i.DueTime)
+	}
+	return dd
+}
+
+func (i *TaskList) generateArgument(t string) ArgumentProperty {
+	uuid, err := uuid.NewV4()
+	if err != nil {
+		log.Fatalf("Failed to generate UUID: %v", err)
+	}
+	var ap ArgumentProperty
+	ap.ID = uuid.String()
+
+	if t == "reminder" {
+		ap.ItemID = i.TaskID
+		ap.Type = "absolute"
+		ap.Due = i.ReminderDueDate
+	} else {
+		i.TaskID = uuid.String()
+		ap.Content = i.Name
+		ap.DateAdded = i.CurrentDate.Format(time.RFC3339)
+		ap.Due = i.TaskDueDate
+		ap.Priority = 1
+	}
+
+	return ap
+}
+
+func (i *TaskList) generateCommand(t string) Commands {
+	uuid, err := uuid.NewV4()
+	if err != nil {
+		log.Fatalf("Failed to generate UUID: %v", err)
+	}
+	var c Commands
+
+	if t == "reminder" {
+		c.Type = "reminder_add"
+		c.UUID = uuid.String()
+		c.TempID = uuid.String()
+		c.Args = i.ReminderArgument
+	} else {
+		c.Type = "item_add"
+		c.UUID = uuid.String()
+		c.TempID = i.TaskID
+		c.Args = i.TaskArgument
+	}
+
+	return c
+}
+
+func (r *TodoistRequest) createItem() {
+
+	url := "https://api.todoist.com/sync/v8/sync"
+	k := os.Getenv("TODOIST_KEY")
+	b := "Bearer " + k
+
+	reqBody, err := json.Marshal(r)
+	if err != nil {
+		log.Fatalf("Failed to parse struct into JSON: %v", err)
+	}
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Authorization", b)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalf("Error on response: %v", err)
+	}
+	defer resp.Body.Close()
+	respReader, _ := ioutil.ReadFile("task.json")
+	var output []TodoistResponse
+	err = json.Unmarshal(respReader, &output)
+	if err != nil {
+		log.Fatalf("Failed to unmarshal json: %v", err)
+	}
+	fmt.Println(output)
 }
 
 func handleRequest() {
@@ -67,105 +158,49 @@ func handleRequest() {
 		log.Fatal("Error loading .env file")
 	}
 
-	url := "https://api.todoist.com/sync/v8/sync"
-	k := os.Getenv("TODOIST_KEY")
-	b := "Bearer " + k
-
-	location, _ := time.LoadLocation("Asia/Singapore")
-	t := time.Now().In(location)
-
-	items, _ := ioutil.ReadFile("task.json")
-	var input []TaskList
-	err = json.Unmarshal(items, &input)
+	var items []TaskList
+	input := readJson()
+	err = json.Unmarshal(input, &items)
 	if err != nil {
 		log.Fatalf("Failed to unmarshal json: %v", err)
 	}
 
-	var uuid1 *uuid.UUID
-	var uuid2 *uuid.UUID
-	var itemId *uuid.UUID
-	var dd1 DueDate
-	var dd2 DueDate
-	var ap1 ArgumentProperty
-	var ap2 ArgumentProperty
+	location, _ := time.LoadLocation("Asia/Singapore")
+	time := time.Now().In(location)
+
 	var c []Commands
-	var args TodoistRequest
 
-	for _, s := range input {
-		uuid1, _ = uuid.NewV4()
-		uuid2, _ = uuid.NewV4()
-		itemId, _ = uuid.NewV4()
+	for _, i := range items {
+		i.CurrentDate = time
 
-		dd1 = DueDate{
-			Lang:        "en",
-			IsRecurring: false,
-			String:      "every day",
-			Date:        t.Format("2006-01-02"),
-			Timezone:    "Asia/Singapore",
-		}
+		i.TaskDueDate = i.generateDueDate("task")
+		i.TaskArgument = i.generateArgument("task")
 
-		dd2 = DueDate{
-			Lang:        "en",
-			IsRecurring: false,
-			String:      fmt.Sprintf("%s %s", t.Format("02 Jan"), s.DueTime),
-			Date:        fmt.Sprintf("%sT%s:00", t.Format("2006-01-02"), s.DueTime),
-			Timezone:    "Asia/Singapore",
-		}
-
-		ap1 = ArgumentProperty{
-			ID:        uuid1.String(),
-			Content:   s.Name,
-			Due:       dd1,
-			DateAdded: t.Format((time.RFC3339)),
-			Priority:  1,
-		}
-
-		ap2 = ArgumentProperty{
-			ID:     itemId.String() + "-reminder",
-			ItemID: itemId.String(),
-			Type:   "absolute",
-			Due:    dd2,
-		}
+		i.ReminderDueDate = i.generateDueDate("reminder")
+		i.ReminderArgument = i.generateArgument("reminder")
 
 		c = []Commands{
-			{
-				Type:   "item_add",
-				UUID:   uuid1.String(),
-				TempID: itemId.String(),
-				Args:   ap1,
-			},
-			{
-				Type:   "reminder_add",
-				UUID:   uuid2.String(),
-				TempID: uuid2.String() + "-reminder-temp-id",
-				Args:   ap2,
-			},
+			i.generateCommand("task"),
+			i.generateCommand("reminder"),
 		}
-		args = TodoistRequest{
+
+		args := TodoistRequest{
 			SyncToken: "*",
 			Commands:  c,
 		}
 
-		reqBody, err := json.Marshal(args)
-		if err != nil {
-			log.Fatalf("Failed to parse struct into JSON: %v", err)
-		}
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
-		req.Header.Add("Content-Type", "application/json")
-		req.Header.Add("Authorization", b)
-
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Fatalf("Error on response: %v", err)
-		}
-		defer resp.Body.Close()
-		respReader, _ := ioutil.ReadFile("task.json")
-		var output []TodoistResponse
-		err = json.Unmarshal(respReader, &output)
-		if err != nil {
-			log.Fatalf("Failed to unmarshal json: %v", err)
-		}
-		fmt.Println(output)
+		args.createItem()
 	}
+}
+
+func readJson() []byte {
+	items, err := ioutil.ReadFile("task.json")
+	if err != nil {
+		log.Fatalf("Failed to read task.json file: %v", err)
+	}
+	return items
+}
+
+func main() {
+	lambda.Start(handleRequest)
 }
