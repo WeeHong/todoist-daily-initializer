@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/joho/godotenv"
 	uuid "github.com/nu7hatch/gouuid"
 )
@@ -203,6 +204,5 @@ func readJson() []byte {
 }
 
 func main() {
-	// lambda.Start(handleRequest)
-	handleRequest()
+	lambda.Start(handleRequest)
 }
